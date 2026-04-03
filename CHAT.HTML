@@ -26,6 +26,7 @@
 
         let activeChatPartner = null;
         let chatRef = null;
+        let typingRef = null;
         let typingTimeout;
         let replyData = null;
         let selectedMsgId = null;
@@ -58,6 +59,7 @@
 
         window.logout = () => signOut(auth);
 
+        // Typing Status logic
         window.sendTypingStatus = (isTyping) => {
             if (!activeChatPartner || !auth.currentUser) return;
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
@@ -102,6 +104,7 @@
         };
 
         function openChat(partnerCode) {
+            if (activeChatPartner === partnerCode) return;
             activeChatPartner = partnerCode.toLowerCase();
             document.getElementById('chat-view-container').classList.remove('hidden');
             document.getElementById('welcome-view').classList.add('hidden');
@@ -112,9 +115,11 @@
         }
 
         function listenToPartnerTyping() {
+            if (typingRef) off(typingRef);
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const chatId = [myCode, activeChatPartner].sort().join("_");
-            onValue(ref(db, `typing/${chatId}/${activeChatPartner}`), (snap) => {
+            typingRef = ref(db, `typing/${chatId}/${activeChatPartner}`);
+            onValue(typingRef, (snap) => {
                 const indicator = document.getElementById('typing-indicator');
                 if (snap.val() === true) {
                     indicator.innerText = "typing...";
@@ -158,6 +163,7 @@
 
         function renderMessage(id, msg, isMe) {
             const msgContainer = document.getElementById('messages');
+            if (document.getElementById(`msg-${id}`)) return;
             const div = document.createElement('div');
             div.id = `msg-${id}`;
             const tickColor = msg.status === 'seen' ? 'text-blue-400' : 'text-gray-500';
@@ -178,7 +184,7 @@
             div.oncontextmenu = (e) => { e.preventDefault(); openOptions(id, isMe, msg.text); };
 
             div.innerHTML = `
-                ${msg.replyTo ? `<div class="bg-black/20 p-2 rounded text-[10px] mb-1 italic border-l-2 border-white/30 truncate text-gray-300">Replying to: ${msg.replyTo.text}</div>` : ''}
+                ${msg.replyTo ? `<div class="bg-black/20 p-2 rounded text-[10px] mb-1 italic border-l-2 border-white/30 truncate text-gray-300 font-serif">Replying to: ${msg.replyTo.text}</div>` : ''}
                 <p id="text-${id}" class="text-sm leading-tight break-words">${msg.text}${msg.edited ? ' (edited)' : ''}</p>
                 <div class="flex justify-end items-center mt-1 text-[8px] opacity-70">
                     ${new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} ${tickIcon}
@@ -250,7 +256,9 @@
             messages.scrollTop = messages.scrollHeight;
         }
 
+        // AUTO AUTH & RELOAD PROTECTION
         onAuthStateChanged(auth, (user) => {
+            const loadingOverlay = document.getElementById('loading-overlay');
             if (user) {
                 document.getElementById('auth-screen').classList.add('hidden');
                 document.getElementById('app-screen').classList.remove('hidden');
@@ -260,6 +268,7 @@
                 document.getElementById('auth-screen').classList.remove('hidden');
                 document.getElementById('app-screen').classList.add('hidden');
             }
+            loadingOverlay.classList.add('hidden'); // Hide black screen after auth check
         });
 
         window.deleteCurrentChat = async () => {
@@ -282,7 +291,6 @@
             document.getElementById('signup-form').classList.toggle('hidden');
         };
 
-        // KEYBOARD SCROLL FIX
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', () => {
                 const height = window.visualViewport.height;
@@ -297,20 +305,25 @@
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); }
         .break-words { overflow-wrap: break-word; word-break: break-word; }
         
-        /* Mobile Screen Fix */
-        body { height: 100dvh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; position: fixed; top: 0; left: 0; }
+        body { height: 100dvh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; position: fixed; top: 0; left: 0; background: black; }
         #app-screen { height: 100%; display: flex; overflow: hidden; width: 100%; }
         #chat-view-container { flex: 1; display: flex; flex-direction: column; background: black; height: 100%; position: relative; }
-        #messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; }
+        #messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 10px; scroll-behavior: smooth; }
         #input-area { flex-shrink: 0; background: #111827; width: 100%; }
-        
-        /* Smooth Typing transition */
         #typing-indicator { transition: opacity 0.3s ease; }
+
+        /* Fix for refresh flash */
+        #loading-overlay { position: fixed; inset: 0; background: black; z-index: 9999; display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body class="bg-black text-white font-sans overflow-hidden select-none">
 
-    <div id="auth-screen" class="h-full flex items-center justify-center p-6 w-full">
+    <!-- Loading Screen to prevent refresh flash -->
+    <div id="loading-overlay">
+        <div class="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+
+    <div id="auth-screen" class="hidden h-full flex items-center justify-center p-6 w-full">
         <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm">
             <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic uppercase">Flash Chat</h1>
             <div id="login-form" class="space-y-4 text-center">
@@ -338,11 +351,11 @@
             <div class="p-4">
                 <div class="flex gap-2 bg-black border border-gray-800 p-1 rounded-xl">
                     <input id="search-user" type="text" autocomplete="off" spellcheck="false" placeholder="Search Code..." class="flex-grow bg-transparent p-2 text-xs outline-none">
-                    <button onclick="startNewChat()" class="bg-red-600 px-4 rounded-xl"><i class="fas fa-plus"></i></button>
+                    <button onclick="startNewChat()" class="bg-red-600 px-4 rounded-xl active:scale-95"><i class="fas fa-plus"></i></button>
                 </div>
             </div>
             <div id="chat-list" class="flex-grow overflow-y-auto no-scrollbar"></div>
-            <div class="p-3 bg-gray-900 text-[9px] text-center text-red-500 uppercase font-bold border-t border-gray-800">
+            <div class="p-3 bg-gray-900 text-[9px] text-center text-red-500 uppercase font-bold border-t border-gray-800 tracking-widest">
                 MY ID: <span id="user-display"></span>
             </div>
         </div>
@@ -364,14 +377,14 @@
                 <div id="messages" class="p-4 space-y-2 no-scrollbar bg-gray-950"></div>
 
                 <div id="input-area">
-                    <div id="reply-container" class="hidden bg-gray-800/80 p-3 border-l-4 border-red-600 mx-4 mt-2 rounded-t-xl flex justify-between">
+                    <div id="reply-container" class="hidden bg-gray-800/80 p-3 border-l-4 border-red-600 mx-4 mt-2 rounded-t-xl flex justify-between items-center">
                         <p class="text-[10px] italic truncate text-gray-400" id="reply-preview"></p>
-                        <i onclick="cancelReply()" class="fas fa-times text-xs cursor-pointer text-gray-500"></i>
+                        <i onclick="cancelReply()" class="fas fa-times text-xs cursor-pointer text-gray-500 ml-2"></i>
                     </div>
 
-                    <div class="p-4 flex gap-2">
+                    <div class="p-4 flex gap-2 items-center">
                         <input id="message-input" oninput="sendTypingStatus(true); clearTimeout(typingTimeout); typingTimeout = setTimeout(()=>sendTypingStatus(false),1500)" type="text" autocomplete="off" spellcheck="false" placeholder="Type a message..." class="flex-grow bg-black border border-gray-800 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                        <button onclick="sendMessage()" class="bg-red-600 w-14 h-14 rounded-2xl flex items-center justify-center active:scale-95 transition shadow-lg"><i class="fas fa-paper-plane"></i></button>
+                        <button onclick="sendMessage()" class="bg-red-600 w-14 h-14 rounded-2xl flex items-center justify-center active:scale-95 transition shadow-lg shrink-0"><i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
             </div>
@@ -388,11 +401,11 @@
     </div>
 
     <div id="edit-modal" class="hidden fixed inset-0 bg-black/95 flex items-center justify-center z-[110] p-6">
-        <div class="glass w-full max-w-sm p-6 rounded-3xl border border-gray-800">
+        <div class="glass w-full max-w-sm p-6 rounded-3xl border border-gray-800 shadow-2xl">
             <h3 class="mb-4 text-xs font-bold uppercase text-red-500 border-b border-gray-800 pb-2">Edit Message</h3>
             <textarea id="edit-input" class="w-full bg-black border border-gray-700 p-3 rounded-xl outline-none text-sm mb-4 h-24 text-white" spellcheck="false"></textarea>
             <div class="flex gap-2">
-                <button onclick="saveEdit()" class="flex-grow bg-green-600 p-3 rounded-xl font-bold uppercase text-xs">Update</button>
+                <button onclick="saveEdit()" class="flex-grow bg-green-600 p-3 rounded-xl font-bold uppercase text-xs shadow-lg">Update</button>
                 <button onclick="document.getElementById('edit-modal').classList.add('hidden')" class="flex-grow bg-gray-800 p-3 rounded-xl uppercase text-xs">Cancel</button>
             </div>
         </div>
