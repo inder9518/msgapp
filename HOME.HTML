@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viral Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .news-card { transition: transform 0.2s; }
+        /* Style for anchor tags to look like buttons */
+        .category-btn { display: inline-block; transition: all 0.2s; }
+        .category-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+
+    <header class="fixed top-0 w-full z-50 bg-gray-900 border-b border-gray-800 h-[60px] flex items-center px-4 justify-between">
+        <h1 class="text-xl font-black text-red-500 tracking-tighter italic">
+            FLASH<span class="text-white">NEWS</span>
+        </h1>
+        <div class="flex items-center gap-3">
+            <span class="flex h-2 w-2 bg-red-500 rounded-full animate-ping"></span>
+            <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Live Feed</span>
+        </div>
+    </header>
+
+    <nav class="fixed top-[60px] left-0 right-0 z-40 bg-[#111827] border-b border-gray-700 py-3">
+        <div class="flex overflow-x-auto no-scrollbar px-4 space-x-2">
+            <a href="trending.html" class="category-btn px-5 py-1.5 bg-red-600 rounded-full whitespace-nowrap text-sm font-bold shadow-lg shadow-red-900/20">Trending</a>
+            
+            <a href="politics.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Politics</a>
+            
+            <a href="bollywood.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Bollywood</a>
+            
+            <a href="cricket.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Cricket</a>
+            
+            <a href="gadgets.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Gadgets</a>
+            
+            <a href="crypto.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Crypto</a>
+            
+            <a href="jobs.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Jobs</a>
+            
+            <a href="science.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Science</a>
+            
+            <a href="world.html" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">World</a>
+            
+            <a href="CHAT.HTML" class="category-btn px-5 py-1.5 bg-gray-800 border border-gray-700 rounded-full whitespace-nowrap text-sm font-medium hover:bg-gray-700">Health</a>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 pb-10 pt-[130px]">
+        <div class="flex justify-between items-center mb-6">
+            <h2 id="category-title" class="text-lg font-bold border-l-4 border-red-500 pl-3 uppercase tracking-wider">Trending</h2>
+            <span class="text-[10px] text-gray-500 italic">Updated: <span id="last-updated">00:00</span></span>
+        </div>
+
+        <div id="news-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            </div>
+    </main>
+
+    <script>
+        const newsContainer = document.getElementById('news-container');
+        const catTitle = document.getElementById('category-title');
+        const updateTime = document.getElementById('last-updated');
+
+        async function fetchNews(category) {
+            catTitle.innerText = category;
+            updateTime.innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            newsContainer.innerHTML = '';
+            
+            for(let i=0; i<12; i++) {
+                const card = createNewsCard(category, i);
+                newsContainer.innerHTML += card;
+            }
+        }
+
+        function createNewsCard(cat, i) {
+            const randomViews = Math.floor(Math.random() * 900) + "K";
+            return `
+                <div class="news-card bg-gray-800 rounded-xl overflow-hidden border border-gray-700 shadow-lg">
+                    <div class="relative">
+                        <img src="https://picsum.photos/seed/${cat + i}/400/220" class="w-full h-44 object-cover" alt="img">
+                        <span class="absolute top-2 left-2 bg-red-600 text-[10px] font-bold px-2 py-0.5 rounded shadow-lg">LIVE</span>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-md font-bold leading-snug line-clamp-2 hover:text-red-400 cursor-pointer transition">
+                            ${cat.toUpperCase()}: Breaking news update - Ye news viral ho rahi hai! #${i+1}
+                        </h3>
+                        <div class="flex items-center justify-between mt-4">
+                            <div class="flex items-center text-gray-400 text-[10px] font-bold uppercase tracking-tighter">
+                                <i class="fas fa-eye mr-1 text-red-500"></i> ${randomViews} Views
+                            </div>
+                            <button class="text-xs font-bold text-blue-400 hover:text-white transition uppercase tracking-tighter">Read More <i class="fas fa-arrow-right ml-1"></i></button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        setInterval(() => {
+            const currentCat = catTitle.innerText.toLowerCase();
+            fetchNews(currentCat);
+        }, 60000);
+
+        window.onload = () => fetchNews('trending');
+    </script>
+
+</body>
+</html>

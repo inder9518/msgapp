@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viral Private Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, push, onChildAdded, off, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBPUG_5NKAZAc2S5ddzGIlQkuysV-aRsyM",
+            authDomain: "my-msg-app-92faa.firebaseapp.com",
+            projectId: "my-msg-app-92faa",
+            storageBucket: "my-msg-app-92faa.firebasestorage.app",
+            messagingSenderId: "654492278706",
+            appId: "1:654492278706:web:1309303447cf223b564eab"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        let activeChatPartner = null;
+        let chatRef = null;
+
+        // --- AUTH LOGIC ---
+        window.handleSignUp = async () => {
+            const code = document.getElementById('reg-code').value.trim();
+            const pass = document.getElementById('reg-pass').value;
+            const name = document.getElementById('reg-name').value;
+            if(!code || !pass || !name) return alert("All fields required");
+            try {
+                const userCredential = await createUserWithEmailAndPassword(auth, code + "@viral.com", pass);
+                await updateProfile(userCredential.user, { displayName: name });
+                location.reload();
+            } catch (e) { alert(e.message); }
+        };
+
+        window.handleLogin = async () => {
+            const code = document.getElementById('login-code').value.trim();
+            const pass = document.getElementById('login-pass').value;
+            try { await signInWithEmailAndPassword(auth, code + "@viral.com", pass); } catch (e) { alert("Invalid Code/Password"); }
+        };
+
+        window.logout = () => signOut(auth);
+
+        // --- CHAT LIST LOGIC (WhatsApp Style) ---
+        function updateChatList() {
+            const myCode = auth.currentUser.email.split('@')[0];
+            const listContainer = document.getElementById('chat-list');
+            const chatListRef = ref(db, `user_chats/${myCode}`);
+
+            onValue(chatListRef, (snapshot) => {
+                listContainer.innerHTML = '';
+                const chats = snapshot.val();
+                if (!chats) {
+                    listContainer.innerHTML = '<p class="text-gray-600 text-xs text-center mt-4">No recent chats</p>';
+                    return;
+                }
+                Object.keys(chats).forEach(partnerCode => {
+                    const div = document.createElement('div');
+                    div.className = `p-4 border-b border-gray-800 cursor-pointer hover:bg-gray-800 transition flex items-center gap-3 ${activeChatPartner === partnerCode ? 'bg-gray-800 border-l-4 border-l-red-600' : ''}`;
+                    div.onclick = () => openChat(partnerCode);
+                    div.innerHTML = `
+                        <div class="w-10 h-10 bg-red-900 rounded-full flex items-center justify-center font-bold text-red-200">${partnerCode[0].toUpperCase()}</div>
+                        <div>
+                            <p class="text-sm font-bold text-white">${partnerCode}</p>
+                            <p class="text-[10px] text-gray-500">Click to message</p>
+                        </div>
+                    `;
+                    listContainer.appendChild(div);
+                });
+            });
+        }
+
+        window.startNewChat = () => {
+            const searchCode = document.getElementById('search-user').value.trim();
+            if(!searchCode || searchCode === auth.currentUser.email.split('@')[0]) return alert("Invalid Code");
+            openChat(searchCode);
+            document.getElementById('search-user').value = '';
+        };
+
+        function openChat(partnerCode) {
+            activeChatPartner = partnerCode;
+            document.getElementById('chat-view').classList.remove('hidden');
+            document.getElementById('welcome-view').classList.add('hidden');
+            document.getElementById('chat-partner-name').innerText = partnerCode;
+            
+            // Mobile view toggle
+            document.getElementById('side-panel').classList.add('hidden', 'md:block');
+            
+            loadMessages();
+            updateChatList(); // Refresh highlighting
+        }
+
+        window.closeChat = () => {
+            document.getElementById('side-panel').classList.remove('hidden');
+            document.getElementById('chat-view').classList.add('hidden', 'md:block');
+        }
+
+        function loadMessages() {
+            const msgContainer = document.getElementById('messages');
+            msgContainer.innerHTML = '';
+            if(chatRef) off(chatRef);
+
+            const myCode = auth.currentUser.email.split('@')[0];
+            const chatId = [myCode, activeChatPartner].sort().join("_");
+            chatRef = ref(db, 'private_messages/' + chatId);
+            
+            onChildAdded(chatRef, (data) => {
+                const msg = data.val();
+                const div = document.createElement('div');
+                const isMe = msg.sender === myCode;
+                div.className = `p-3 my-2 rounded-2xl max-w-[85%] shadow-md ${isMe ? 'bg-red-600 ml-auto rounded-tr-none text-white' : 'bg-gray-800 rounded-tl-none border border-gray-700 text-gray-200'}`;
+                div.innerHTML = `<p class="text-[10px] font-bold opacity-70 mb-1">${isMe ? 'You' : msg.senderName}</p><p class="text-sm">${msg.text}</p>`;
+                msgContainer.appendChild(div);
+                msgContainer.scrollTop = msgContainer.scrollHeight;
+            });
+        }
+
+        window.sendMessage = () => {
+            const text = document.getElementById('message-input').value;
+            if(!text || !activeChatPartner) return;
+
+            const myCode = auth.currentUser.email.split('@')[0];
+            const chatId = [myCode, activeChatPartner].sort().join("_");
+            
+            const messageData = {
+                sender: myCode,
+                senderName: auth.currentUser.displayName,
+                text: text,
+                timestamp: Date.now()
+            };
+
+            push(ref(db, 'private_messages/' + chatId), messageData);
+            
+            // Update Chat List for both users
+            set(ref(db, `user_chats/${myCode}/${activeChatPartner}`), { lastActive: Date.now() });
+            set(ref(db, `user_chats/${activeChatPartner}/${myCode}`), { lastActive: Date.now() });
+
+            document.getElementById('message-input').value = '';
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app-screen').classList.remove('hidden');
+                document.getElementById('user-display').innerText = user.displayName;
+                updateChatList();
+            } else {
+                document.getElementById('auth-screen').classList.remove('hidden');
+                document.getElementById('app-screen').classList.add('hidden');
+            }
+        });
+
+        window.toggleAuth = () => {
+            document.getElementById('login-form').classList.toggle('hidden');
+            document.getElementById('signup-form').classList.toggle('hidden');
+        };
+    </script>
+    <style>
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-black text-white font-sans h-screen overflow-hidden">
+
+    <div id="auth-screen" class="h-full flex items-center justify-center p-6">
+        <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm">
+            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic">FLASHCHAT</h1>
+            <div id="login-form" class="space-y-4">
+                <input id="login-code" type="text" placeholder="Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <input id="login-pass" type="password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <button onclick="handleLogin()" class="w-full bg-red-600 py-4 rounded-xl font-bold">LOGIN</button>
+            </div>
+            <div id="signup-form" class="space-y-4 hidden">
+                <input id="reg-code" type="text" placeholder="Create Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <input id="reg-pass" type="password" placeholder="Set Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <input id="reg-name" type="text" placeholder="Your Name" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <button onclick="handleSignUp()" class="w-full bg-green-600 py-4 rounded-xl font-bold">SIGN UP</button>
+            </div>
+            <button onclick="toggleAuth()" class="w-full mt-6 text-xs text-gray-500">Switch Login/Signup</button>
+        </div>
+    </div>
+
+    <div id="app-screen" class="hidden flex h-full">
+        <div id="side-panel" class="w-full md:w-80 border-r border-gray-800 flex flex-col bg-gray-950">
+            <header class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
+                <span class="font-black text-red-600 italic">CHATS</span>
+                <button onclick="logout()" class="text-[10px] text-gray-500">Logout</button>
+            </header>
+            
+            <div class="p-4">
+                <div class="flex gap-2">
+                    <input id="search-user" type="text" placeholder="Search user code..." class="flex-grow bg-gray-900 border border-gray-700 p-2 rounded-lg text-xs outline-none">
+                    <button onclick="startNewChat()" class="bg-red-600 px-3 rounded-lg"><i class="fas fa-plus text-xs"></i></button>
+                </div>
+            </div>
+
+            <div id="chat-list" class="flex-grow overflow-y-auto no-scrollbar">
+                </div>
+            
+            <div class="p-3 bg-gray-900 text-[10px] text-center text-gray-600 border-t border-gray-800">
+                Logged in as: <span id="user-display" class="text-red-500"></span>
+            </div>
+        </div>
+
+        <div id="main-view" class="flex-grow flex flex-col bg-black">
+            <div id="welcome-view" class="h-full flex flex-center flex-col items-center justify-center text-gray-700">
+                <i class="fas fa-comments text-6xl mb-4"></i>
+                <p>Select a chat or search a code to start</p>
+            </div>
+
+            <div id="chat-view" class="hidden flex flex-col h-full">
+                <header class="p-4 bg-gray-900 border-b border-gray-800 flex items-center gap-3">
+                    <button onclick="closeChat()" class="md:hidden text-gray-400"><i class="fas fa-arrow-left"></i></button>
+                    <div class="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold text-xs" id="header-icon">?</div>
+                    <h2 id="chat-partner-name" class="font-bold text-sm">User</h2>
+                </header>
+
+                <div id="messages" class="flex-grow overflow-y-auto p-4 space-y-2 no-scrollbar bg-[url('https://i.pinimg.com/originals/85/ec/3b/85ec3b71f98144026362d29486c47864.jpg')] bg-blend-multiply bg-gray-950">
+                    </div>
+
+                <div class="p-4 bg-gray-900 border-t border-gray-800 flex gap-2 pb-8 md:pb-4">
+                    <input id="message-input" type="text" placeholder="Type message..." class="flex-grow bg-black border border-gray-700 p-3 rounded-xl outline-none text-sm">
+                    <button onclick="sendMessage()" class="bg-red-600 w-12 h-12 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
