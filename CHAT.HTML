@@ -58,9 +58,8 @@
 
         window.logout = () => signOut(auth);
 
-        // Typing Status logic
         window.sendTypingStatus = (isTyping) => {
-            if (!activeChatPartner) return;
+            if (!activeChatPartner || !auth.currentUser) return;
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const chatId = [myCode, activeChatPartner].sort().join("_");
             set(ref(db, `typing/${chatId}/${myCode}`), isTyping);
@@ -117,7 +116,7 @@
             const chatId = [myCode, activeChatPartner].sort().join("_");
             onValue(ref(db, `typing/${chatId}/${activeChatPartner}`), (snap) => {
                 const indicator = document.getElementById('typing-indicator');
-                if (snap.val()) {
+                if (snap.val() === true) {
                     indicator.innerText = "typing...";
                     indicator.classList.remove('opacity-0');
                 } else {
@@ -164,7 +163,6 @@
             const tickColor = msg.status === 'seen' ? 'text-blue-400' : 'text-gray-500';
             const tickIcon = isMe ? `<i id="tick-${id}" class="fas fa-check-double text-[10px] ml-1 ${tickColor}"></i>` : '';
 
-            // Message width logic: w-fit for length based background
             div.className = `p-3 my-2 rounded-2xl w-fit max-w-[85%] min-w-[100px] shadow-md transition-transform relative bg-gray-800 border border-gray-700 text-gray-200 ${isMe ? 'bg-red-600 ml-auto rounded-tr-none' : 'bg-gray-800 rounded-tl-none'}`;
             
             let pressTimer;
@@ -268,7 +266,7 @@
 
         window.closeChat = () => {
             document.getElementById('side-panel').classList.remove('hidden');
-            document.getElementById('chat-view').classList.add('hidden', 'md:block');
+            document.getElementById('chat-view-container').classList.add('hidden', 'md:block');
             activeChatPartner = null;
         }
 
@@ -277,26 +275,33 @@
             document.getElementById('signup-form').classList.toggle('hidden');
         };
 
-        // Keyboard fix for mobile
-        window.addEventListener('resize', () => {
-            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
-                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-            }
-        });
+        // KEYBOARD FIX: Using VisualViewport API
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                const height = window.visualViewport.height;
+                document.body.style.height = height + 'px';
+                if (document.activeElement.tagName === 'INPUT') {
+                    document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+                }
+            });
+        }
     </script>
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); }
         .break-words { overflow-wrap: break-word; word-break: break-word; }
-        /* Keyboard fix */
-        #chat-view { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-        #messages { flex-grow: 1; overflow-y: auto; }
-        #input-area { flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* Mobile Screen Fix */
+        body { height: 100vh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; position: fixed; }
+        #app-screen { flex: 1; display: flex; overflow: hidden; }
+        #chat-view-container { flex: 1; display: flex; flex-direction: column; background: black; }
+        #messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        #input-area { flex-shrink: 0; background: #111827; }
     </style>
 </head>
-<body class="bg-black text-white font-sans h-screen overflow-hidden select-none">
+<body class="bg-black text-white font-sans overflow-hidden select-none">
 
-    <div id="auth-screen" class="h-full flex items-center justify-center p-6">
+    <div id="auth-screen" class="h-full flex items-center justify-center p-6 w-full">
         <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm">
             <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic uppercase">Flash Chat</h1>
             <div id="login-form" class="space-y-4 text-center">
@@ -315,7 +320,7 @@
         </div>
     </div>
 
-    <div id="app-screen" class="hidden flex h-full">
+    <div id="app-screen" class="hidden w-full">
         <div id="side-panel" class="w-full md:w-80 border-r border-gray-800 flex flex-col bg-gray-950">
             <header class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900 h-[60px]">
                 <span class="font-black text-red-600 italic">MESSAGES</span>
@@ -335,7 +340,7 @@
 
         <div id="main-view" class="flex-grow flex flex-col bg-black">
             <div id="welcome-view" class="h-full flex items-center justify-center text-gray-700 uppercase text-xs tracking-widest italic font-medium">Flash Chat Server Active</div>
-            <div id="chat-view" class="hidden">
+            <div id="chat-view-container" class="hidden">
                 <header class="p-4 bg-gray-900 border-b border-gray-800 flex items-center justify-between h-[60px]">
                     <div class="flex items-center gap-4">
                         <button onclick="closeChat()" class="md:hidden text-gray-400"><i class="fas fa-arrow-left"></i></button>
@@ -344,20 +349,20 @@
                             <p id="typing-indicator" class="text-[10px] text-green-500 h-3 italic transition-opacity duration-300 opacity-0"></p>
                         </div>
                     </div>
-                    <button onclick="deleteCurrentChat()" class="text-gray-600 hover:text-red-500 px-2"><i class="fas fa-trash-alt"></i></button>
+                    <button onclick="deleteCurrentChat()" class="text-gray-600 hover:text-red-500 px-2 transition"><i class="fas fa-trash-alt"></i></button>
                 </header>
                 
-                <div id="messages" class="p-4 space-y-2 no-scrollbar bg-gray-950"></div>
+                <div id="messages" class="p-4 space-y-2 no-scrollbar"></div>
 
-                <div id="input-area" class="bg-gray-900 border-t border-gray-800">
+                <div id="input-area" class="border-t border-gray-800">
                     <div id="reply-container" class="hidden bg-gray-800/50 p-3 border-l-4 border-red-600 mx-4 mt-2 rounded-t-xl flex justify-between">
                         <p class="text-[10px] italic truncate text-gray-400" id="reply-preview"></p>
                         <i onclick="cancelReply()" class="fas fa-times text-xs cursor-pointer text-gray-500"></i>
                     </div>
 
                     <div class="p-4 flex gap-2">
-                        <input id="message-input" oninput="sendTypingStatus(true); clearTimeout(typingTimeout); typingTimeout = setTimeout(()=>sendTypingStatus(false),2000)" type="text" autocomplete="off" spellcheck="false" placeholder="Type a message..." class="flex-grow bg-black border border-gray-800 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
-                        <button onclick="sendMessage()" class="bg-red-600 w-14 h-14 rounded-xl flex items-center justify-center active:scale-95 transition shadow-lg"><i class="fas fa-paper-plane"></i></button>
+                        <input id="message-input" oninput="sendTypingStatus(true); clearTimeout(typingTimeout); typingTimeout = setTimeout(()=>sendTypingStatus(false),1500)" type="text" autocomplete="off" spellcheck="false" placeholder="Type a message..." class="flex-grow bg-black border border-gray-800 p-4 rounded-xl text-sm outline-none focus:border-red-600 transition">
+                        <button onclick="sendMessage()" class="bg-red-600 w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition"><i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
             </div>
@@ -365,10 +370,10 @@
     </div>
 
     <div id="msg-menu" class="hidden fixed inset-0 bg-black/90 flex items-end md:items-center justify-center z-[100] p-6">
-        <div class="glass w-full max-w-xs rounded-3xl overflow-hidden border border-gray-800 shadow-2xl">
-            <button onclick="execEdit()" id="edit-btn" class="w-full p-4 border-b border-gray-800 hover:bg-gray-800 flex items-center gap-4 font-bold"><i class="fas fa-edit"></i> Edit</button>
-            <button onclick="execDelete('everyone')" id="del-everyone-btn" class="w-full p-4 border-b border-gray-800 hover:bg-gray-800 flex items-center gap-4 text-red-500 font-bold"><i class="fas fa-trash"></i> Delete for Everyone</button>
-            <button onclick="execDelete('me')" class="w-full p-4 border-b border-gray-800 hover:bg-gray-800 flex items-center gap-4 text-orange-500 font-bold"><i class="fas fa-user-slash"></i> Delete for Me</button>
+        <div class="glass w-full max-w-xs rounded-3xl overflow-hidden border border-gray-800">
+            <button onclick="execEdit()" id="edit-btn" class="w-full p-4 border-b border-gray-800 flex items-center gap-4 font-bold text-sm"><i class="fas fa-edit"></i> Edit</button>
+            <button onclick="execDelete('everyone')" id="del-everyone-btn" class="w-full p-4 border-b border-gray-800 flex items-center gap-4 text-red-500 font-bold text-sm"><i class="fas fa-trash"></i> Delete for Everyone</button>
+            <button onclick="execDelete('me')" class="w-full p-4 border-b border-gray-800 flex items-center gap-4 text-orange-500 font-bold text-sm"><i class="fas fa-user-slash"></i> Delete for Me</button>
             <button onclick="closeMenu()" class="w-full p-4 bg-gray-800 font-bold uppercase text-xs">Cancel</button>
         </div>
     </div>
@@ -386,10 +391,9 @@
 
     <div id="custom-alert" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-[120]">
         <div class="glass p-6 rounded-3xl border border-gray-800 text-center max-w-xs w-full shadow-2xl">
-            <p id="custom-alert-text" class="text-sm font-medium mb-4 italic text-gray-300"></p>
-            <button onclick="closeAlert()" class="bg-red-600 px-8 py-2 rounded-xl font-bold uppercase text-[10px] shadow-lg">Okay</button>
+            <p id="custom-alert-text" class="text-sm font-medium mb-4 text-gray-300"></p>
+            <button onclick="closeAlert()" class="bg-red-600 px-8 py-2 rounded-xl font-bold uppercase text-[10px]">Okay</button>
         </div>
     </div>
-
 </body>
 </html>
