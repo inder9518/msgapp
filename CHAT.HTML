@@ -28,7 +28,6 @@
         let chatRef = null;
         let typingTimeout;
 
-        // --- AUTH ---
         window.handleSignUp = async () => {
             const code = document.getElementById('reg-code').value.trim().toLowerCase();
             const pass = document.getElementById('reg-pass').value;
@@ -50,7 +49,6 @@
 
         window.logout = () => signOut(auth);
 
-        // --- TYPING LOGIC ---
         window.sendTypingStatus = (isTyping) => {
             if (!activeChatPartner) return;
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
@@ -64,19 +62,29 @@
             typingTimeout = setTimeout(() => sendTypingStatus(false), 2000);
         });
 
-        // --- CHAT LIST (Fixed Duplicate rendering) ---
+        // --- CHAT LIST (With Global User Existence Check) ---
         function listenToChatList() {
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const listContainer = document.getElementById('chat-list');
             
-            onValue(ref(db, `user_chats/${myCode}`), (snapshot) => {
-                listContainer.innerHTML = ''; // Clear container to avoid visual duplication
+            onValue(ref(db, `user_chats/${myCode}`), async (snapshot) => {
+                listContainer.innerHTML = '';
                 const chats = snapshot.val();
                 if (!chats) return;
 
+                // Global users ki list fetch karein check karne ke liye
+                const globalUsersSnap = await get(ref(db, 'users'));
+                const globalUsers = globalUsersSnap.val() || {};
+
                 Object.keys(chats).forEach(partnerCode => {
+                    // Agar user global list mein nahi hai, toh sidebar se delete kardo aur dikhao mat
+                    if (!globalUsers[partnerCode]) {
+                        remove(ref(db, `user_chats/${myCode}/${partnerCode}`));
+                        return;
+                    }
+
                     const div = document.createElement('div');
-                    div.id = `sidebar-${partnerCode}`; // Assign unique ID to prevent multi-elements
+                    div.id = `sidebar-${partnerCode}`;
                     div.className = `p-4 border-b border-gray-800 cursor-pointer hover:bg-gray-800 flex items-center gap-3 ${activeChatPartner === partnerCode ? 'bg-gray-800 border-l-4 border-red-600' : ''}`;
                     div.onclick = () => openChat(partnerCode);
                     div.innerHTML = `<div class="w-10 h-10 bg-red-700 rounded-full flex items-center justify-center font-bold text-white uppercase">${partnerCode[0]}</div>
@@ -91,9 +99,12 @@
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             if(!searchCode || searchCode === myCode) return;
             
-            // Check if already exists before setting
-            const check = await get(ref(db, `user_chats/${myCode}/${searchCode}`));
-            if(!check.exists()) {
+            // GLOBAL USER check: Sirf tabhi add hoga agar global list mein exist karta ho
+            const userCheck = await get(ref(db, `users/${searchCode}`));
+            if (!userCheck.exists()) return alert("User Code does not exist!");
+
+            const chatCheck = await get(ref(db, `user_chats/${myCode}/${searchCode}`));
+            if(!chatCheck.exists()) {
                 await set(ref(db, `user_chats/${myCode}/${searchCode}`), { active: true });
                 await set(ref(db, `user_chats/${searchCode}/${myCode}`), { active: true });
             }
@@ -112,7 +123,7 @@
             
             loadMessages();
             listenToPartnerTyping();
-            listenToChatList(); // Refresh highlighting
+            listenToChatList(); 
         }
 
         function listenToPartnerTyping() {
@@ -124,7 +135,7 @@
         }
 
         window.deleteCurrentChat = async () => {
-            if (!confirm("Delete all data for this chat?")) return;
+            if (!confirm("Delete this chat?")) return;
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const partnerCode = activeChatPartner.toLowerCase();
             const chatId = [myCode, partnerCode].sort().join("_");
@@ -187,11 +198,9 @@
             const input = document.getElementById('message-input');
             const text = input.value.trim();
             if(!text || !activeChatPartner) return;
-
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const partnerCode = activeChatPartner.toLowerCase();
             const chatId = [myCode, partnerCode].sort().join("_");
-            
             const messageData = {
                 sender: myCode,
                 senderName: auth.currentUser.displayName,
@@ -199,7 +208,6 @@
                 timestamp: Date.now(),
                 status: 'delivered'
             };
-
             push(ref(db, 'private_messages/' + chatId), messageData);
             input.value = '';
             sendTypingStatus(false);
@@ -238,7 +246,7 @@
 
     <div id="auth-screen" class="h-full flex items-center justify-center p-6">
         <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm">
-            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic tracking-tighter uppercase">Flash Chat</h1>
+            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic tracking-tighter uppercase font-serif">Flash Chat</h1>
             <div id="login-form" class="space-y-4 text-center">
                 <input id="login-code" type="text" placeholder="Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
                 <input id="login-pass" type="password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
@@ -274,7 +282,7 @@
         </div>
 
         <div id="main-view" class="flex-grow flex flex-col bg-black">
-            <div id="welcome-view" class="h-full flex items-center justify-center text-gray-800 uppercase text-xs tracking-widest italic">Select a conversation</div>
+            <div id="welcome-view" class="h-full flex items-center justify-center text-gray-700 uppercase text-xs tracking-widest italic">Select a conversation</div>
             <div id="chat-view" class="hidden flex flex-col h-full">
                 <header class="p-4 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
                     <div class="flex items-center gap-4">
