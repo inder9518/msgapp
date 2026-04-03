@@ -54,8 +54,7 @@
         window.sendTypingStatus = (isTyping) => {
             if (!activeChatPartner) return;
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
-            const partnerCode = activeChatPartner.toLowerCase();
-            const chatId = [myCode, partnerCode].sort().join("_");
+            const chatId = [myCode, activeChatPartner].sort().join("_");
             set(ref(db, `typing/${chatId}/${myCode}`), isTyping);
         };
 
@@ -65,16 +64,19 @@
             typingTimeout = setTimeout(() => sendTypingStatus(false), 2000);
         });
 
-        // --- CHAT LIST ---
+        // --- CHAT LIST (Fixed Duplicate rendering) ---
         function listenToChatList() {
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
+            const listContainer = document.getElementById('chat-list');
+            
             onValue(ref(db, `user_chats/${myCode}`), (snapshot) => {
-                const listContainer = document.getElementById('chat-list');
-                listContainer.innerHTML = '';
+                listContainer.innerHTML = ''; // Clear container to avoid visual duplication
                 const chats = snapshot.val();
                 if (!chats) return;
+
                 Object.keys(chats).forEach(partnerCode => {
                     const div = document.createElement('div');
+                    div.id = `sidebar-${partnerCode}`; // Assign unique ID to prevent multi-elements
                     div.className = `p-4 border-b border-gray-800 cursor-pointer hover:bg-gray-800 flex items-center gap-3 ${activeChatPartner === partnerCode ? 'bg-gray-800 border-l-4 border-red-600' : ''}`;
                     div.onclick = () => openChat(partnerCode);
                     div.innerHTML = `<div class="w-10 h-10 bg-red-700 rounded-full flex items-center justify-center font-bold text-white uppercase">${partnerCode[0]}</div>
@@ -89,10 +91,11 @@
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             if(!searchCode || searchCode === myCode) return;
             
-            // Fix: Check if already exists to avoid recreation
+            // Check if already exists before setting
             const check = await get(ref(db, `user_chats/${myCode}/${searchCode}`));
             if(!check.exists()) {
                 await set(ref(db, `user_chats/${myCode}/${searchCode}`), { active: true });
+                await set(ref(db, `user_chats/${searchCode}/${myCode}`), { active: true });
             }
             
             openChat(searchCode);
@@ -100,6 +103,7 @@
         };
 
         function openChat(partnerCode) {
+            if(activeChatPartner === partnerCode) return;
             activeChatPartner = partnerCode.toLowerCase();
             document.getElementById('chat-view').classList.remove('hidden');
             document.getElementById('welcome-view').classList.add('hidden');
@@ -108,6 +112,7 @@
             
             loadMessages();
             listenToPartnerTyping();
+            listenToChatList(); // Refresh highlighting
         }
 
         function listenToPartnerTyping() {
@@ -118,37 +123,24 @@
             });
         }
 
-        // --- DELETE CHAT (Complete Data Removal) ---
         window.deleteCurrentChat = async () => {
-            if (!confirm("Delete all data and chat for this user?")) return;
+            if (!confirm("Delete all data for this chat?")) return;
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const partnerCode = activeChatPartner.toLowerCase();
             const chatId = [myCode, partnerCode].sort().join("_");
-
-            // 1. Sidebar se hatayein
             await remove(ref(db, `user_chats/${myCode}/${partnerCode}`));
-            
-            // 2. Messages delete karein (Everyone)
             await remove(ref(db, `private_messages/${chatId}`)); 
-            
-            // 3. Typing status clear karein
             await remove(ref(db, `typing/${chatId}`));
-
-            activeChatPartner = null;
-            document.getElementById('chat-view').classList.add('hidden');
-            document.getElementById('welcome-view').classList.remove('hidden');
-            document.getElementById('side-panel').classList.remove('hidden');
+            location.reload();
         };
 
-        // --- MESSAGES ---
         function loadMessages() {
             const msgContainer = document.getElementById('messages');
             msgContainer.innerHTML = '';
             if(chatRef) off(chatRef);
 
             const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
-            const partnerCode = activeChatPartner.toLowerCase();
-            const chatId = [myCode, partnerCode].sort().join("_");
+            const chatId = [myCode, activeChatPartner].sort().join("_");
             chatRef = ref(db, 'private_messages/' + chatId);
             
             onChildAdded(chatRef, (data) => {
@@ -159,7 +151,10 @@
                 if (!isMe && msg.status !== 'seen') {
                     update(ref(db, `private_messages/${chatId}/${msgId}`), { status: 'seen' });
                 }
-                renderMessage(msgId, msg, isMe);
+                
+                if (!document.getElementById(`msg-${msgId}`)) {
+                    renderMessage(msgId, msg, isMe);
+                }
             });
 
             onChildChanged(chatRef, (data) => {
@@ -174,6 +169,7 @@
         function renderMessage(id, msg, isMe) {
             const msgContainer = document.getElementById('messages');
             const div = document.createElement('div');
+            div.id = `msg-${id}`;
             const tickColor = msg.status === 'seen' ? 'text-blue-400' : 'text-gray-500';
             const tickIcon = isMe ? `<i id="tick-${id}" class="fas fa-check-double text-[10px] ml-1 ${tickColor}"></i>` : '';
 
@@ -204,15 +200,7 @@
                 status: 'delivered'
             };
 
-            // Send message
             push(ref(db, 'private_messages/' + chatId), messageData);
-
-            // Sync Sidebar (Update only if NOT already active to prevent duplicates)
-            const myUpdates = {};
-            myUpdates[`user_chats/${myCode}/${partnerCode}/active`] = true;
-            myUpdates[`user_chats/${partnerCode}/${myCode}/active`] = true;
-            update(ref(db), myUpdates);
-
             input.value = '';
             sendTypingStatus(false);
         };
@@ -250,19 +238,19 @@
 
     <div id="auth-screen" class="h-full flex items-center justify-center p-6">
         <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm">
-            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic tracking-tighter">FLASH CHAT</h1>
+            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic tracking-tighter uppercase">Flash Chat</h1>
             <div id="login-form" class="space-y-4 text-center">
                 <input id="login-code" type="text" placeholder="Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
                 <input id="login-pass" type="password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
                 <button onclick="handleLogin()" class="w-full bg-red-600 py-4 rounded-xl font-bold hover:scale-105 transition">Login</button>
                 <button onclick="toggleAuth()" class="text-xs text-gray-500 mt-4 underline italic">Create Account</button>
             </div>
-            <div id="signup-form" class="space-y-4 hidden">
+            <div id="signup-form" class="space-y-4 hidden text-center">
                 <input id="reg-code" type="text" placeholder="Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
                 <input id="reg-pass" type="password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
                 <input id="reg-name" type="text" placeholder="Full Name" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
                 <button onclick="handleSignUp()" class="w-full bg-green-600 py-4 rounded-xl font-bold">Sign Up</button>
-                <button onclick="toggleAuth()" class="w-full text-xs text-gray-500 mt-4 text-center underline italic">Already registered?</button>
+                <button onclick="toggleAuth()" class="text-xs text-gray-500 mt-4 underline italic">Back to Login</button>
             </div>
         </div>
     </div>
@@ -271,14 +259,12 @@
         <div id="side-panel" class="w-full md:w-80 border-r border-gray-800 flex flex-col bg-gray-950">
             <header class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
                 <span class="font-black text-red-600 italic tracking-widest text-lg">MESSAGES</span>
-                <button onclick="logout()" class="text-[10px] bg-gray-800 px-3 py-1 rounded-full text-gray-400">Exit</button>
+                <button onclick="logout()" class="text-[10px] bg-gray-800 px-3 py-1 rounded-full text-gray-400 font-bold uppercase">Exit</button>
             </header>
             <div class="p-4">
                 <div class="flex gap-2 bg-black border border-gray-800 p-1 rounded-xl">
                     <input id="search-user" type="text" placeholder="Enter Friend's Code..." class="flex-grow bg-transparent p-2 text-xs outline-none">
-                    <button onclick="startNewChat()" class="bg-red-600 px-4 rounded-xl hover:bg-red-700 transition">
-                        <i class="fas fa-plus"></i>
-                    </button>
+                    <button onclick="startNewChat()" class="bg-red-600 px-4 rounded-xl transition active:scale-90"><i class="fas fa-plus"></i></button>
                 </div>
             </div>
             <div id="chat-list" class="flex-grow overflow-y-auto no-scrollbar"></div>
@@ -288,7 +274,7 @@
         </div>
 
         <div id="main-view" class="flex-grow flex flex-col bg-black">
-            <div id="welcome-view" class="h-full flex items-center justify-center text-gray-700 uppercase text-xs tracking-widest italic">Select a conversation</div>
+            <div id="welcome-view" class="h-full flex items-center justify-center text-gray-800 uppercase text-xs tracking-widest italic">Select a conversation</div>
             <div id="chat-view" class="hidden flex flex-col h-full">
                 <header class="p-4 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
                     <div class="flex items-center gap-4">
