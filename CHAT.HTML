@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashChat Private Sync</title>
+    <title>FlashChat Final Sync</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script type="module">
@@ -27,9 +27,9 @@
         let activeChatPartner = null;
         let chatRef = null;
 
-        // --- AUTH LOGIC ---
+        // --- AUTH ---
         window.handleSignUp = async () => {
-            const code = document.getElementById('reg-code').value.trim();
+            const code = document.getElementById('reg-code').value.trim().toLowerCase(); // Lowercase for sync
             const pass = document.getElementById('reg-pass').value;
             const name = document.getElementById('reg-name').value;
             try {
@@ -41,39 +41,32 @@
         };
 
         window.handleLogin = async () => {
-            const code = document.getElementById('login-code').value.trim();
+            const code = document.getElementById('login-code').value.trim().toLowerCase();
             const pass = document.getElementById('login-pass').value;
-            try { await signInWithEmailAndPassword(auth, code + "@viral.com", pass); } catch (e) { alert("Invalid Code/Password"); }
+            try { await signInWithEmailAndPassword(auth, code + "@viral.com", pass); } catch (e) { alert("Login Failed"); }
         };
 
         window.logout = () => signOut(auth);
 
-        // --- DYNAMIC CHAT LIST ---
+        // --- CHAT LIST ---
         function listenToChatList() {
-            const myCode = auth.currentUser.email.split('@')[0];
+            const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
             const listContainer = document.getElementById('chat-list');
             
-            // Listen for any changes in the user's chat list node
             onValue(ref(db, `user_chats/${myCode}`), (snapshot) => {
                 listContainer.innerHTML = '';
                 const chats = snapshot.val();
-                if (!chats) {
-                    listContainer.innerHTML = '<p class="text-gray-600 text-[10px] text-center mt-10 italic">No Active Chats</p>';
-                    return;
-                }
+                if (!chats) return;
                 
                 Object.keys(chats).forEach(partnerCode => {
                     const div = document.createElement('div');
-                    div.className = `p-4 border-b border-gray-800 cursor-pointer hover:bg-gray-800 transition flex items-center gap-3 ${activeChatPartner === partnerCode ? 'bg-gray-800 border-l-4 border-l-red-600' : ''}`;
+                    div.className = `p-4 border-b border-gray-800 cursor-pointer hover:bg-gray-800 flex items-center gap-3 ${activeChatPartner === partnerCode ? 'bg-gray-800 border-l-4 border-red-600' : ''}`;
                     div.onclick = () => openChat(partnerCode);
                     div.innerHTML = `
-                        <div class="w-10 h-10 bg-red-700 rounded-full flex items-center justify-center font-bold text-white shadow-lg">${partnerCode[0].toUpperCase()}</div>
+                        <div class="w-10 h-10 bg-red-700 rounded-full flex items-center justify-center font-bold text-white">${partnerCode[0].toUpperCase()}</div>
                         <div class="flex-grow">
-                            <div class="flex justify-between items-center">
-                                <p class="text-sm font-bold text-white tracking-wide">${partnerCode}</p>
-                                <span class="text-[8px] text-gray-500">Live</span>
-                            </div>
-                            <p class="text-[10px] text-gray-400 truncate">Tap to message...</p>
+                            <p class="text-sm font-bold text-white uppercase tracking-tighter">${partnerCode}</p>
+                            <p class="text-[10px] text-gray-500 italic">Online</p>
                         </div>
                     `;
                     listContainer.appendChild(div);
@@ -82,19 +75,18 @@
         }
 
         window.startNewChat = () => {
-            const searchCode = document.getElementById('search-user').value.trim();
-            if(!searchCode || searchCode === auth.currentUser.email.split('@')[0]) return alert("Invalid User Code");
+            const searchCode = document.getElementById('search-user').value.trim().toLowerCase();
+            if(!searchCode || searchCode === auth.currentUser.email.split('@')[0]) return;
             openChat(searchCode);
             document.getElementById('search-user').value = '';
         };
 
         function openChat(partnerCode) {
-            activeChatPartner = partnerCode;
+            activeChatPartner = partnerCode.toLowerCase();
             document.getElementById('chat-view').classList.remove('hidden');
             document.getElementById('welcome-view').classList.add('hidden');
-            document.getElementById('chat-partner-name').innerText = partnerCode;
+            document.getElementById('chat-partner-name').innerText = activeChatPartner;
             document.getElementById('side-panel').classList.add('hidden', 'md:block');
-            
             loadMessages();
         }
 
@@ -103,22 +95,24 @@
             document.getElementById('chat-view').classList.add('hidden', 'md:block');
         }
 
+        // --- MESSAGES (Room Fix) ---
         function loadMessages() {
             const msgContainer = document.getElementById('messages');
             msgContainer.innerHTML = '';
             if(chatRef) off(chatRef);
 
-            const myCode = auth.currentUser.email.split('@')[0];
-            const chatId = [myCode, activeChatPartner].sort().join("_");
+            const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
+            const partnerCode = activeChatPartner.toLowerCase();
+            const chatId = [myCode, partnerCode].sort().join("_");
+            
             chatRef = ref(db, 'private_messages/' + chatId);
             
-            // Listen for existing and new messages
             onChildAdded(chatRef, (data) => {
                 const msg = data.val();
                 const div = document.createElement('div');
-                const isMe = msg.sender === myCode;
-                div.className = `p-3 my-2 rounded-2xl max-w-[85%] shadow-md ${isMe ? 'bg-red-600 ml-auto rounded-tr-none text-white' : 'bg-gray-800 rounded-tl-none border border-gray-700 text-gray-200'}`;
-                div.innerHTML = `<p class="text-[9px] font-bold opacity-50 mb-1">${isMe ? 'You' : msg.senderName}</p><p class="text-sm leading-tight">${msg.text}</p>`;
+                const isMe = msg.sender.toLowerCase() === myCode;
+                div.className = `p-3 my-2 rounded-2xl max-w-[80%] ${isMe ? 'bg-red-600 ml-auto rounded-tr-none' : 'bg-gray-800 rounded-tl-none border border-gray-700 text-gray-200'}`;
+                div.innerHTML = `<p class="text-[9px] opacity-50 mb-1">${isMe ? 'You' : msg.senderName}</p><p class="text-sm">${msg.text}</p>`;
                 msgContainer.appendChild(div);
                 msgContainer.scrollTop = msgContainer.scrollHeight;
             });
@@ -129,8 +123,9 @@
             const text = input.value.trim();
             if(!text || !activeChatPartner) return;
 
-            const myCode = auth.currentUser.email.split('@')[0];
-            const chatId = [myCode, activeChatPartner].sort().join("_");
+            const myCode = auth.currentUser.email.split('@')[0].toLowerCase();
+            const partnerCode = activeChatPartner.toLowerCase();
+            const chatId = [myCode, partnerCode].sort().join("_");
             
             const messageData = {
                 sender: myCode,
@@ -139,14 +134,11 @@
                 timestamp: Date.now()
             };
 
-            // 1. Message push to shared room
             push(ref(db, 'private_messages/' + chatId), messageData);
             
-            // 2. IMPORTANT: Dono users ke private list mein ek dusre ko mark karo
-            await update(ref(db), {
-                [`user_chats/${myCode}/${activeChatPartner}/active`]: true,
-                [`user_chats/${activeChatPartner}/${myCode}/active`]: true
-            });
+            // Sync Sidebar for BOTH users
+            await set(ref(db, `user_chats/${myCode}/${partnerCode}`), { active: true });
+            await set(ref(db, `user_chats/${partnerCode}/${myCode}`), { active: true });
 
             input.value = '';
         };
@@ -169,76 +161,60 @@
         };
     </script>
     <style>
-        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        #messages { background-image: radial-gradient(#1a1a1a 1px, transparent 1px); background-size: 20px 20px; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(15px); }
     </style>
 </head>
 <body class="bg-black text-white font-sans h-screen overflow-hidden">
 
     <div id="auth-screen" class="h-full flex items-center justify-center p-6">
-        <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm shadow-2xl">
-            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic tracking-tighter uppercase">Flash Chat</h1>
-            <div id="login-form" class="space-y-4">
-                <input id="login-code" type="text" placeholder="Your Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
+        <div class="glass p-8 rounded-3xl border border-gray-800 w-full max-w-sm">
+            <h1 class="text-3xl font-black text-red-600 mb-8 text-center italic tracking-tighter">FLASH CHAT</h1>
+            <div id="login-form" class="space-y-4 text-center">
+                <input id="login-code" type="text" placeholder="Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
                 <input id="login-pass" type="password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none focus:border-red-600">
-                <button onclick="handleLogin()" class="w-full bg-red-600 py-4 rounded-xl font-bold hover:bg-red-700 active:scale-95 transition">Login</button>
+                <button onclick="handleLogin()" class="w-full bg-red-600 py-4 rounded-xl font-bold">Login</button>
+                <button onclick="toggleAuth()" class="text-xs text-gray-500 mt-4 underline">Create Account</button>
             </div>
             <div id="signup-form" class="space-y-4 hidden">
-                <input id="reg-code" type="text" placeholder="New Access Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <input id="reg-code" type="text" placeholder="New Code" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
                 <input id="reg-pass" type="password" placeholder="Password" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
-                <input id="reg-name" type="text" placeholder="Display Name" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
-                <button onclick="handleSignUp()" class="w-full bg-green-600 py-4 rounded-xl font-bold">Sign Up</button>
+                <input id="reg-name" type="text" placeholder="Name" class="w-full bg-gray-900 border border-gray-700 p-4 rounded-xl outline-none">
+                <button onclick="handleSignUp()" class="w-full bg-green-600 py-4 rounded-xl font-bold text-center">Sign Up</button>
+                <button onclick="toggleAuth()" class="w-full text-xs text-gray-500 mt-4 text-center underline">Already have account?</button>
             </div>
-            <button onclick="toggleAuth()" class="w-full mt-6 text-[10px] text-gray-500 hover:text-white transition">New User? Create Account</button>
         </div>
     </div>
 
     <div id="app-screen" class="hidden flex h-full">
         <div id="side-panel" class="w-full md:w-80 border-r border-gray-800 flex flex-col bg-gray-950">
-            <header class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-900">
-                <span class="font-black text-red-600 italic tracking-widest text-lg">MESSAGES</span>
-                <button onclick="logout()" class="text-[10px] bg-gray-800 px-3 py-1 rounded-full text-gray-400">Exit</button>
+            <header class="p-4 border-b border-gray-800 flex justify-between items-center">
+                <span class="font-black text-red-600 italic">MESSAGES</span>
+                <button onclick="logout()" class="text-[10px] text-gray-500">Exit</button>
             </header>
-            
-            <div class="p-4 bg-gray-900/50">
-                <div class="flex gap-2 p-1 bg-black border border-gray-800 rounded-2xl">
-                    <input id="search-user" type="text" placeholder="Search code (eg. Inderjeet)" class="flex-grow bg-transparent p-2 text-xs outline-none">
-                    <button onclick="startNewChat()" class="bg-red-600 px-4 rounded-xl hover:bg-red-700 transition">
-                        <i class="fas fa-plus text-xs"></i>
-                    </button>
+            <div class="p-4">
+                <div class="flex gap-2 bg-black border border-gray-800 p-1 rounded-xl">
+                    <input id="search-user" type="text" placeholder="Code..." class="flex-grow bg-transparent p-2 text-xs outline-none">
+                    <button onclick="startNewChat()" class="bg-red-600 px-3 rounded-lg"><i class="fas fa-plus"></i></button>
                 </div>
             </div>
-
-            <div id="chat-list" class="flex-grow overflow-y-auto no-scrollbar">
-                </div>
-            
-            <div class="p-3 bg-gray-900 text-[9px] text-center text-gray-600 border-t border-gray-800 uppercase tracking-widest">
-                ID: <span id="user-display" class="text-red-500 font-bold"></span>
+            <div id="chat-list" class="flex-grow overflow-y-auto no-scrollbar"></div>
+            <div class="p-3 bg-gray-900 text-[9px] text-center text-red-500">
+                User: <span id="user-display" class="font-bold"></span>
             </div>
         </div>
 
         <div id="main-view" class="flex-grow flex flex-col bg-black">
-            <div id="welcome-view" class="h-full flex flex-col items-center justify-center text-gray-700">
-                <i class="fas fa-comment-dots text-6xl mb-4 opacity-20"></i>
-                <p class="text-xs uppercase tracking-[0.2em] font-medium">Flash Chat Private Server</p>
-            </div>
-
+            <div id="welcome-view" class="h-full flex items-center justify-center text-gray-800 uppercase text-xs tracking-widest">Select a chat</div>
             <div id="chat-view" class="hidden flex flex-col h-full">
                 <header class="p-4 bg-gray-900 border-b border-gray-800 flex items-center gap-4">
-                    <button onclick="closeChat()" class="md:hidden text-gray-400"><i class="fas fa-arrow-left"></i></button>
-                    <div class="w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold text-xs" id="header-initial">?</div>
-                    <h2 id="chat-partner-name" class="font-black text-sm uppercase tracking-wider">User</h2>
+                    <button onclick="closeChat()" class="md:hidden"><i class="fas fa-arrow-left"></i></button>
+                    <h2 id="chat-partner-name" class="font-black text-sm text-red-500 uppercase tracking-widest">User</h2>
                 </header>
-
-                <div id="messages" class="flex-grow overflow-y-auto p-4 space-y-3 no-scrollbar bg-gray-950">
-                    </div>
-
-                <div class="p-4 bg-gray-900 border-t border-gray-800 flex gap-2 pb-10 md:pb-4">
-                    <input id="message-input" type="text" placeholder="Write message..." class="flex-grow bg-black border border-gray-800 p-4 rounded-2xl outline-none text-sm text-white focus:border-red-600 transition">
-                    <button onclick="sendMessage()" class="bg-red-600 w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition">
-                        <i class="fas fa-paper-plane text-lg"></i>
-                    </button>
+                <div id="messages" class="flex-grow overflow-y-auto p-4 space-y-2 no-scrollbar"></div>
+                <div class="p-4 bg-gray-900 border-t border-gray-800 flex gap-2 pb-10">
+                    <input id="message-input" type="text" placeholder="Message..." class="flex-grow bg-black border border-gray-800 p-4 rounded-xl text-sm outline-none">
+                    <button onclick="sendMessage()" class="bg-red-600 w-14 h-14 rounded-xl flex items-center justify-center"><i class="fas fa-paper-plane"></i></button>
                 </div>
             </div>
         </div>
